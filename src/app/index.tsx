@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Text, View, FlatList, ActivityIndicator, TouchableOpacity, Alert } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useDatabase } from "../contexts/DatabaseContext";
-import { getAllHabits, createHabit, toggleDoneToday, updateHabit } from "../db";
+import { getAllHabits, createHabit, toggleDoneToday, updateHabit, deleteHabit } from "../db";
 import { Habit } from "../types/habit";
 import AddHabitModal from "../components/AddHabitModal";
 
@@ -117,6 +117,43 @@ export default function HabitListScreen() {
     }
   };
 
+  // Xử lý xóa thói quen với xác nhận
+  const handleDeleteHabit = (habit: Habit) => {
+    if (!db || !habit.id) return;
+
+    // Hiển thị Alert xác nhận
+    Alert.alert(
+      'Xác nhận xóa',
+      `Bạn có chắc chắn muốn xóa thói quen "${habit.title}" không?`,
+      [
+        {
+          text: 'Hủy',
+          style: 'cancel',
+        },
+        {
+          text: 'Xóa',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              // Xóa trong database (soft delete)
+              await deleteHabit(db, habit.id!);
+              
+              // Refresh danh sách
+              await loadHabits();
+              
+              // Thông báo thành công
+              Alert.alert('Thành công', 'Đã xóa thói quen!');
+            } catch (error) {
+              console.error('Error deleting habit:', error);
+              Alert.alert('Lỗi', 'Không thể xóa thói quen. Vui lòng thử lại!');
+            }
+          },
+        },
+      ],
+      { cancelable: true }
+    );
+  };
+
   // Render item trong FlatList
   const renderHabitItem = ({ item }: { item: Habit }) => {
     const isDone = item.done_today === 1;
@@ -176,15 +213,27 @@ export default function HabitListScreen() {
             📅 {new Date(item.created_at).toLocaleDateString('vi-VN')}
           </Text>
           
-          <TouchableOpacity
-            onPress={(e) => {
-              e.stopPropagation();
-              handleOpenEditModal(item);
-            }}
-            className="bg-orange-500 px-3 py-2 rounded-md"
-          >
-            <Text className="text-white text-xs font-semibold">✏️ Sửa</Text>
-          </TouchableOpacity>
+          <View className="flex-row gap-2">
+            <TouchableOpacity
+              onPress={(e) => {
+                e.stopPropagation();
+                handleOpenEditModal(item);
+              }}
+              className="bg-orange-500 px-3 py-2 rounded-md"
+            >
+              <Text className="text-white text-xs font-semibold">✏️ Sửa</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={(e) => {
+                e.stopPropagation();
+                handleDeleteHabit(item);
+              }}
+              className="bg-red-500 px-3 py-2 rounded-md"
+            >
+              <Text className="text-white text-xs font-semibold">🗑️ Xóa</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </TouchableOpacity>
     );
