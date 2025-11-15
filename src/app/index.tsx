@@ -5,6 +5,7 @@ import { useDatabase } from "../contexts/DatabaseContext";
 import { getAllHabits, createHabit, toggleDoneToday, updateHabit, deleteHabit } from "../db";
 import { Habit } from "../types/habit";
 import AddHabitModal from "../components/AddHabitModal";
+import { fetchHabitsFromAPI, ApiHabit } from "../services/api";
 
 export default function HabitListScreen() {
   const { db, isLoading: dbLoading } = useDatabase();
@@ -14,6 +15,7 @@ export default function HabitListScreen() {
   const [editingHabit, setEditingHabit] = useState<Habit | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [showActiveOnly, setShowActiveOnly] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
   const { top } = useSafeAreaInsets();
 
   // Lấy dữ liệu từ database
@@ -180,11 +182,87 @@ export default function HabitListScreen() {
     );
   };
 
+  // Xử lý import thói quen từ API
+  const handleImportFromAPI = async () => {
+    if (!db) return;
+
+    try {
+      setIsImporting(true);
+
+      // Fetch habits từ API
+      const apiHabits = await fetchHabitsFromAPI();
+
+      if (!apiHabits || apiHabits.length === 0) {
+        Alert.alert('Thông báo', 'Không có thói quen nào từ API');
+        return;
+      }
+
+      // Lấy danh sách titles hiện có để check trùng
+      const existingTitles = habits.map(h => h.title.toLowerCase().trim());
+
+      let importedCount = 0;
+      let skippedCount = 0;
+
+      // Import từng habit
+      for (const apiHabit of apiHabits) {
+        const title = (apiHabit.title || apiHabit.name || '').trim();
+        
+        if (!title) {
+          skippedCount++;
+          continue;
+        }
+
+        // Kiểm tra trùng title (case-insensitive)
+        if (existingTitles.includes(title.toLowerCase())) {
+          console.log(`Skipping duplicate: ${title}`);
+          skippedCount++;
+          continue;
+        }
+
+        // Thêm vào database
+        const newHabit = {
+          title,
+          description: apiHabit.description || null,
+          active: apiHabit.active !== undefined ? apiHabit.active : 1,
+          done_today: 0,
+          created_at: Date.now(),
+        };
+
+        await createHabit(db, newHabit);
+        importedCount++;
+
+        // Thêm vào existingTitles để check các habits tiếp theo
+        existingTitles.push(title.toLowerCase());
+      }
+
+      // Refresh danh sách
+      await loadHabits();
+
+      // Thông báo kết quả
+      if (importedCount > 0) {
+        Alert.alert(
+          'Import thành công!',
+          `Đã thêm ${importedCount} thói quen mới${skippedCount > 0 ? `\nBỏ qua ${skippedCount} thói quen trùng lặp` : ''}`
+        );
+      } else {
+        Alert.alert('Thông báo', 'Tất cả thói quen đã tồn tại, không có thói quen mới nào được thêm');
+      }
+    } catch (error) {
+      console.error('Error importing habits:', error);
+      Alert.alert(
+        'Lỗi khi import',
+        'Không thể lấy dữ liệu từ API. Vui lòng kiểm tra kết nối mạng và thử lại!'
+      );
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
   // Render item trong FlatList
   const renderHabitItem = ({ item }: { item: Habit }) => {
     const isDone = item.done_today === 1;
     
-    return (
+  return (
       <TouchableOpacity
         onPress={() => handleToggleDone(item)}
         activeOpacity={0.7}
@@ -207,15 +285,15 @@ export default function HabitListScreen() {
           </View>
 
           {/* Content */}
-          <View className="flex-1">
-            <Text 
+    <View className="flex-1">
+            <Text
               className={`text-lg font-semibold mb-1 ${
                 isDone ? 'text-green-800 line-through' : 'text-gray-900'
               }`}
             >
               {item.title}
             </Text>
-            
+
             {item.description && (
               <Text className={`text-sm leading-5 ${
                 isDone ? 'text-green-700' : 'text-gray-600'
@@ -288,12 +366,12 @@ export default function HabitListScreen() {
               <Text className="text-white font-medium">Xóa tìm kiếm</Text>
             </TouchableOpacity>
           )}
-        </View>
-      );
-    }
+    </View>
+  );
+}
 
     // Empty state mặc định
-    return (
+  return (
       <View className="flex-1 justify-center items-center px-6 py-20">
         <Text className="text-6xl mb-4">📝</Text>
         <Text className="text-xl font-semibold text-gray-900 mb-2 text-center">
@@ -311,9 +389,9 @@ export default function HabitListScreen() {
       <View className="flex-1 justify-center items-center bg-gray-50">
         <ActivityIndicator size="large" color="#3B82F6" />
         <Text className="mt-4 text-gray-600">Đang tải...</Text>
-      </View>
-    );
-  }
+    </View>
+  );
+}
 
   return (
     <View className="flex-1 bg-gray-50" style={{ paddingTop: top }}>
@@ -344,8 +422,8 @@ export default function HabitListScreen() {
           )}
         </View>
 
-        {/* Filter Toggle */}
-        <View className="flex-row items-center justify-between">
+        {/* Filter Toggle & Import Button */}
+        <View className="flex-row items-center justify-between mb-3">
           <View className="flex-row items-center">
             <Text className="text-sm text-gray-700 mr-2">
               Hiển thị {filteredHabits.length} / {habits.length} thói quen
@@ -365,6 +443,27 @@ export default function HabitListScreen() {
             </Text>
           </TouchableOpacity>
         </View>
+
+        {/* Import Button */}
+        <TouchableOpacity
+          onPress={handleImportFromAPI}
+          disabled={isImporting}
+          className={`flex-row items-center justify-center py-2.5 rounded-lg border-2 ${
+            isImporting ? 'bg-gray-100 border-gray-300' : 'bg-purple-50 border-purple-300'
+          }`}
+        >
+          {isImporting ? (
+            <>
+              <ActivityIndicator size="small" color="#9333EA" className="mr-2" />
+              <Text className="text-purple-700 font-semibold text-sm">Đang import...</Text>
+            </>
+          ) : (
+            <>
+              <Text className="text-purple-700 font-semibold text-sm mr-1">📥</Text>
+              <Text className="text-purple-700 font-semibold text-sm">Import thói quen từ API</Text>
+            </>
+          )}
+        </TouchableOpacity>
       </View>
 
       {/* Danh sách thói quen */}
