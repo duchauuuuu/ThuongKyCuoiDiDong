@@ -107,6 +107,16 @@ export const updateHabit = async (db: SQLiteDatabase, data: Habit) => {
   );
 };
 
+// TOGGLE - Toggle trạng thái done_today (0 ↔ 1)
+export const toggleDoneToday = async (db: SQLiteDatabase, id: number, currentStatus: number) => {
+  const newStatus = currentStatus === 1 ? 0 : 1;
+  await db.runAsync(
+    'UPDATE habits SET done_today = ? WHERE id = ?',
+    [newStatus, id]
+  );
+  return newStatus;
+};
+
 // DELETE - Xóa mềm habit (set active = 0)
 export const deleteHabit = async (db: SQLiteDatabase, id: number) => {
   await db.runAsync('UPDATE habits SET active = 0 WHERE id = ?', [id]);

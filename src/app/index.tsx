@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Text, View, FlatList, ActivityIndicator, TouchableOpacity, Alert } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useDatabase } from "../contexts/DatabaseContext";
-import { getAllHabits, createHabit } from "../db";
+import { getAllHabits, createHabit, toggleDoneToday } from "../db";
 import { Habit } from "../types/habit";
 import AddHabitModal from "../components/AddHabitModal";
 
@@ -60,37 +60,96 @@ export default function HabitListScreen() {
     }
   };
 
+  // Xử lý toggle trạng thái done_today
+  const handleToggleDone = async (habit: Habit) => {
+    if (!db || !habit.id) return;
+
+    try {
+      // Toggle trong database
+      await toggleDoneToday(db, habit.id, habit.done_today);
+      
+      // Cập nhật state ngay lập tức (optimistic update)
+      setHabits(prevHabits =>
+        prevHabits.map(h =>
+          h.id === habit.id
+            ? { ...h, done_today: h.done_today === 1 ? 0 : 1 }
+            : h
+        )
+      );
+    } catch (error) {
+      console.error('Error toggling habit:', error);
+      Alert.alert('Lỗi', 'Không thể cập nhật trạng thái. Vui lòng thử lại!');
+      // Rollback bằng cách reload lại data
+      await loadHabits();
+    }
+  };
+
   // Render item trong FlatList
-  const renderHabitItem = ({ item }: { item: Habit }) => (
-    <View className="bg-white p-4 mb-3 rounded-lg shadow-sm border border-gray-200">
-      <View className="flex-row justify-between items-start mb-2">
-        <Text className="text-lg font-semibold text-gray-900 flex-1">{item.title}</Text>
-        {item.done_today === 1 && (
-          <View className="bg-green-100 px-3 py-1 rounded-full">
-            <Text className="text-green-700 text-xs font-medium">✓ Hoàn thành</Text>
+  const renderHabitItem = ({ item }: { item: Habit }) => {
+    const isDone = item.done_today === 1;
+    
+    return (
+      <TouchableOpacity
+        onPress={() => handleToggleDone(item)}
+        activeOpacity={0.7}
+        className={`p-4 mb-3 rounded-lg shadow-sm border-2 ${
+          isDone
+            ? 'bg-green-50 border-green-300'
+            : 'bg-white border-gray-200'
+        }`}
+      >
+        <View className="flex-row justify-between items-start mb-2">
+          {/* Icon check circle lớn */}
+          <View className="mr-3 mt-1">
+            {isDone ? (
+              <View className="w-6 h-6 rounded-full bg-green-500 items-center justify-center">
+                <Text className="text-white text-sm font-bold">✓</Text>
+              </View>
+            ) : (
+              <View className="w-6 h-6 rounded-full border-2 border-gray-300 bg-white" />
+            )}
           </View>
-        )}
-        {item.done_today === 0 && (
-          <View className="bg-gray-100 px-3 py-1 rounded-full">
-            <Text className="text-gray-600 text-xs font-medium">Chưa làm</Text>
+
+          {/* Content */}
+          <View className="flex-1">
+            <Text 
+              className={`text-lg font-semibold mb-1 ${
+                isDone ? 'text-green-800 line-through' : 'text-gray-900'
+              }`}
+            >
+              {item.title}
+            </Text>
+            
+            {item.description && (
+              <Text className={`text-sm leading-5 ${
+                isDone ? 'text-green-700' : 'text-gray-600'
+              }`}>
+                {item.description}
+              </Text>
+            )}
           </View>
-        )}
-      </View>
-      
-      {item.description && (
-        <Text className="text-gray-600 text-sm leading-5">{item.description}</Text>
-      )}
-      
-      <View className="flex-row justify-between items-center mt-3 pt-3 border-t border-gray-100">
-        <Text className="text-xs text-gray-400">
-          {new Date(item.created_at).toLocaleDateString('vi-VN')}
-        </Text>
-        <TouchableOpacity className="bg-blue-500 px-4 py-2 rounded-md">
-          <Text className="text-white text-sm font-medium">Đánh dấu</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
+
+          {/* Badge trạng thái */}
+          {isDone && (
+            <View className="bg-green-500 px-3 py-1 rounded-full ml-2">
+              <Text className="text-white text-xs font-bold">✓ Xong</Text>
+            </View>
+          )}
+        </View>
+        
+        {/* Footer */}
+        <View className="flex-row justify-between items-center mt-3 pt-3 border-t border-gray-200">
+          <Text className={`text-xs ${isDone ? 'text-green-600' : 'text-gray-400'}`}>
+            📅 {new Date(item.created_at).toLocaleDateString('vi-VN')}
+          </Text>
+          
+          <Text className={`text-sm font-medium ${isDone ? 'text-green-600' : 'text-blue-500'}`}>
+            {isDone ? '🎉 Đã hoàn thành hôm nay' : '👉 Chạm để đánh dấu'}
+          </Text>
+        </View>
+      </TouchableOpacity>
+    );
+  };
 
   // Empty state
   const renderEmptyState = () => (
