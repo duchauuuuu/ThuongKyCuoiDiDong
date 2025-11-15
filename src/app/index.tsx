@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from "react";
-import { Text, View, FlatList, ActivityIndicator, TouchableOpacity, Alert } from "react-native";
+import React, { useEffect, useState, useMemo, useCallback } from "react";
+import { Text, View, FlatList, ActivityIndicator, TouchableOpacity, Alert, TextInput } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useDatabase } from "../contexts/DatabaseContext";
 import { getAllHabits, createHabit, toggleDoneToday, updateHabit, deleteHabit } from "../db";
@@ -12,6 +12,8 @@ export default function HabitListScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingHabit, setEditingHabit] = useState<Habit | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showActiveOnly, setShowActiveOnly] = useState(false);
   const { top } = useSafeAreaInsets();
 
   // Lấy dữ liệu từ database
@@ -34,6 +36,30 @@ export default function HabitListScreen() {
       loadHabits();
     }
   }, [db]);
+
+  // Filter habits theo search query và active status - sử dụng useMemo để tối ưu
+  const filteredHabits = useMemo(() => {
+    let result = habits;
+
+    // Filter theo search query (tìm trong title)
+    if (searchQuery.trim()) {
+      result = result.filter(habit =>
+        habit.title.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+    }
+
+    // Filter theo done_today nếu showActiveOnly = true
+    if (showActiveOnly) {
+      result = result.filter(habit => habit.done_today === 0);
+    }
+
+    return result;
+  }, [habits, searchQuery, showActiveOnly]);
+
+  // Clear search - sử dụng useCallback để tối ưu
+  const handleClearSearch = useCallback(() => {
+    setSearchQuery('');
+  }, []);
 
   // Xử lý thêm/sửa thói quen
   const handleSaveHabit = async (title: string, description: string) => {
@@ -240,17 +266,45 @@ export default function HabitListScreen() {
   };
 
   // Empty state
-  const renderEmptyState = () => (
-    <View className="flex-1 justify-center items-center px-6 py-20">
-      <Text className="text-6xl mb-4">📝</Text>
-      <Text className="text-xl font-semibold text-gray-900 mb-2 text-center">
-        Chưa có thói quen nào
-      </Text>
-      <Text className="text-gray-500 text-center text-base">
-        Hãy thêm một thói quen mới để bắt đầu!
-      </Text>
-    </View>
-  );
+  const renderEmptyState = () => {
+    // Nếu đang search hoặc filter
+    if (searchQuery.trim() || showActiveOnly) {
+      return (
+        <View className="flex-1 justify-center items-center px-6 py-20">
+          <Text className="text-6xl mb-4">🔍</Text>
+          <Text className="text-xl font-semibold text-gray-900 mb-2 text-center">
+            Không tìm thấy kết quả
+          </Text>
+          <Text className="text-gray-500 text-center text-base">
+            {searchQuery.trim() 
+              ? `Không có thói quen nào khớp với "${searchQuery}"`
+              : 'Không có thói quen chưa làm nào'}
+          </Text>
+          {searchQuery.trim() && (
+            <TouchableOpacity 
+              onPress={handleClearSearch}
+              className="mt-4 bg-blue-500 px-6 py-2 rounded-lg"
+            >
+              <Text className="text-white font-medium">Xóa tìm kiếm</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      );
+    }
+
+    // Empty state mặc định
+    return (
+      <View className="flex-1 justify-center items-center px-6 py-20">
+        <Text className="text-6xl mb-4">📝</Text>
+        <Text className="text-xl font-semibold text-gray-900 mb-2 text-center">
+          Chưa có thói quen nào
+        </Text>
+        <Text className="text-gray-500 text-center text-base">
+          Hãy thêm một thói quen mới để bắt đầu!
+        </Text>
+      </View>
+    );
+  };
 
   if (dbLoading || isLoading) {
     return (
@@ -271,9 +325,51 @@ export default function HabitListScreen() {
         </Text>
       </View>
 
+      {/* Search & Filter Section */}
+      <View className="bg-white px-4 py-3 border-b border-gray-200">
+        {/* Search Input */}
+        <View className="flex-row items-center bg-gray-100 rounded-lg px-3 py-2 mb-3">
+          <Text className="text-gray-400 mr-2">🔍</Text>
+          <TextInput
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholder="Tìm kiếm thói quen..."
+            placeholderTextColor="#9CA3AF"
+            className="flex-1 text-base text-gray-900"
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={handleClearSearch} className="ml-2">
+              <Text className="text-gray-500 text-lg">✕</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {/* Filter Toggle */}
+        <View className="flex-row items-center justify-between">
+          <View className="flex-row items-center">
+            <Text className="text-sm text-gray-700 mr-2">
+              Hiển thị {filteredHabits.length} / {habits.length} thói quen
+            </Text>
+          </View>
+          
+          <TouchableOpacity
+            onPress={() => setShowActiveOnly(!showActiveOnly)}
+            className={`flex-row items-center px-3 py-1.5 rounded-full ${
+              showActiveOnly ? 'bg-blue-100' : 'bg-gray-100'
+            }`}
+          >
+            <Text className={`text-xs font-medium ${
+              showActiveOnly ? 'text-blue-700' : 'text-gray-600'
+            }`}>
+              {showActiveOnly ? '✓ ' : ''}Chỉ chưa làm
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
       {/* Danh sách thói quen */}
       <FlatList
-        data={habits}
+        data={filteredHabits}
         renderItem={renderHabitItem}
         keyExtractor={(item) => item.id?.toString() || ''}
         contentContainerStyle={{ padding: 16, flexGrow: 1 }}
