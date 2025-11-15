@@ -15,5 +15,18 @@
     "expo-sqlite"
   ],
   "name": "NguyenDucHau_22679541",
-  "slug": "NguyenDucHau_22679541"
+  "slug": "NguyenDucHau_22679541",
+  "extra": {
+    "router": {
+      "origin": "https://n"
+    },
+    "eas": {
+      "projectId": "85deeb7c-1054-424c-b887-61d69da95258"
+    }
+  },
+  "expo": {
+    "android": {
+      "package": "com.duchauuuuu.NguyenDucHau_22679541"
+    }
+  }
 }
