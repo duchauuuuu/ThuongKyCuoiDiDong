@@ -1,277 +1,115 @@
-import React, { useEffect, useState, useMemo, useCallback } from "react";
-import { Text, View, FlatList, ActivityIndicator, TouchableOpacity, Alert, TextInput } from "react-native";
+import React, { useState, useCallback } from "react";
+import { Text, View, FlatList, ActivityIndicator, TouchableOpacity, Alert, TextInput, RefreshControl } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useDatabase } from "../contexts/DatabaseContext";
-import { getAllHabits, createHabit, toggleDoneToday, updateHabit, deleteHabit } from "../db";
 import { Habit } from "../types/habit";
 import AddHabitModal from "../components/AddHabitModal";
-import { fetchHabitsFromAPI, ApiHabit } from "../services/api";
+import { useHabits } from "../hooks/useHabits";
 
 export default function HabitListScreen() {
   const { db, isLoading: dbLoading } = useDatabase();
-  const [habits, setHabits] = useState<Habit[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const { top } = useSafeAreaInsets();
+  
   const [modalVisible, setModalVisible] = useState(false);
   const [editingHabit, setEditingHabit] = useState<Habit | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [showActiveOnly, setShowActiveOnly] = useState(false);
-  const [isImporting, setIsImporting] = useState(false);
-  const { top } = useSafeAreaInsets();
 
-  // Lấy dữ liệu từ database
-  const loadHabits = async () => {
-    if (!db) return;
-    
-    try {
-      setIsLoading(true);
-      const data = await getAllHabits(db);
-      setHabits(data);
-    } catch (error) {
-      console.error('Error loading habits:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  // Sử dụng custom hook
+  const {
+    habits,
+    filteredHabits,
+    isLoading,
+    isRefreshing,
+    isImporting,
+    searchQuery,
+    showActiveOnly,
+    setSearchQuery,
+    setShowActiveOnly,
+    refreshHabits,
+    addHabit,
+    editHabit,
+    removeHabit,
+    toggleHabitDone,
+    importFromAPI,
+    clearSearch,
+  } = useHabits(db);
 
-  useEffect(() => {
-    if (db) {
-      loadHabits();
-    }
-  }, [db]);
-
-  // Filter habits theo search query và active status - sử dụng useMemo để tối ưu
-  const filteredHabits = useMemo(() => {
-    let result = habits;
-
-    // Filter theo search query (tìm trong title)
-    if (searchQuery.trim()) {
-      result = result.filter(habit =>
-        habit.title.toLowerCase().includes(searchQuery.toLowerCase())
-      );
-    }
-
-    // Filter theo done_today nếu showActiveOnly = true
-    if (showActiveOnly) {
-      result = result.filter(habit => habit.done_today === 0);
-    }
-
-    return result;
-  }, [habits, searchQuery, showActiveOnly]);
-
-  // Clear search - sử dụng useCallback để tối ưu
-  const handleClearSearch = useCallback(() => {
-    setSearchQuery('');
-  }, []);
-
-  // Xử lý thêm/sửa thói quen
-  const handleSaveHabit = async (title: string, description: string) => {
-    if (!db) return;
-
-    try {
+  // Xử lý lưu habit (thêm hoặc sửa)
+  const handleSaveHabit = useCallback(
+    async (title: string, description: string) => {
       if (editingHabit) {
-        // Chế độ sửa
         const updatedHabit: Habit = {
           ...editingHabit,
           title,
           description: description || null,
         };
-
-        await updateHabit(db, updatedHabit);
-        Alert.alert('Thành công', 'Đã cập nhật thói quen!');
+        await editHabit(updatedHabit);
       } else {
-        // Chế độ thêm mới
-        const newHabit = {
-          title,
-          description: description || null,
-          active: 1,
-          done_today: 0,
-          created_at: Date.now(),
-        };
-
-        await createHabit(db, newHabit);
-        Alert.alert('Thành công', 'Đã thêm thói quen mới!');
+        await addHabit(title, description);
       }
-      
-      // Refresh danh sách ngay lập tức
-      await loadHabits();
-      
-      // Reset editing state
       setEditingHabit(null);
-    } catch (error) {
-      console.error('Error saving habit:', error);
-      Alert.alert('Lỗi', 'Không thể lưu thói quen. Vui lòng thử lại!');
-    }
-  };
+    },
+    [editingHabit, addHabit, editHabit]
+  );
 
   // Mở modal thêm mới
-  const handleOpenAddModal = () => {
+  const handleOpenAddModal = useCallback(() => {
     setEditingHabit(null);
     setModalVisible(true);
-  };
+  }, []);
 
   // Mở modal sửa
-  const handleOpenEditModal = (habit: Habit) => {
+  const handleOpenEditModal = useCallback((habit: Habit) => {
     setEditingHabit(habit);
     setModalVisible(true);
-  };
+  }, []);
 
   // Đóng modal
-  const handleCloseModal = () => {
+  const handleCloseModal = useCallback(() => {
     setModalVisible(false);
     setEditingHabit(null);
-  };
-
-  // Xử lý toggle trạng thái done_today
-  const handleToggleDone = async (habit: Habit) => {
-    if (!db || !habit.id) return;
-
-    try {
-      // Toggle trong database
-      await toggleDoneToday(db, habit.id, habit.done_today);
-      
-      // Cập nhật state ngay lập tức (optimistic update)
-      setHabits(prevHabits =>
-        prevHabits.map(h =>
-          h.id === habit.id
-            ? { ...h, done_today: h.done_today === 1 ? 0 : 1 }
-            : h
-        )
-      );
-    } catch (error) {
-      console.error('Error toggling habit:', error);
-      Alert.alert('Lỗi', 'Không thể cập nhật trạng thái. Vui lòng thử lại!');
-      // Rollback bằng cách reload lại data
-      await loadHabits();
-    }
-  };
+  }, []);
 
   // Xử lý xóa thói quen với xác nhận
-  const handleDeleteHabit = (habit: Habit) => {
-    if (!db || !habit.id) return;
+  const handleDeleteHabit = useCallback(
+    (habit: Habit) => {
+      if (!habit.id) return;
 
-    // Hiển thị Alert xác nhận
-    Alert.alert(
-      'Xác nhận xóa',
-      `Bạn có chắc chắn muốn xóa thói quen "${habit.title}" không?`,
-      [
-        {
-          text: 'Hủy',
-          style: 'cancel',
-        },
-        {
-          text: 'Xóa',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              // Xóa trong database (soft delete)
-              await deleteHabit(db, habit.id!);
-              
-              // Refresh danh sách
-              await loadHabits();
-              
-              // Thông báo thành công
-              Alert.alert('Thành công', 'Đã xóa thói quen!');
-            } catch (error) {
-              console.error('Error deleting habit:', error);
-              Alert.alert('Lỗi', 'Không thể xóa thói quen. Vui lòng thử lại!');
-            }
-          },
-        },
-      ],
-      { cancelable: true }
-    );
-  };
-
-  // Xử lý import thói quen từ API
-  const handleImportFromAPI = async () => {
-    if (!db) return;
-
-    try {
-      setIsImporting(true);
-
-      // Fetch habits từ API
-      const apiHabits = await fetchHabitsFromAPI();
-
-      if (!apiHabits || apiHabits.length === 0) {
-        Alert.alert('Thông báo', 'Không có thói quen nào từ API');
-        return;
-      }
-
-      // Lấy danh sách titles hiện có để check trùng
-      const existingTitles = habits.map(h => h.title.toLowerCase().trim());
-
-      let importedCount = 0;
-      let skippedCount = 0;
-
-      // Import từng habit
-      for (const apiHabit of apiHabits) {
-        const title = (apiHabit.title || apiHabit.name || '').trim();
-        
-        if (!title) {
-          skippedCount++;
-          continue;
-        }
-
-        // Kiểm tra trùng title (case-insensitive)
-        if (existingTitles.includes(title.toLowerCase())) {
-          console.log(`Skipping duplicate: ${title}`);
-          skippedCount++;
-          continue;
-        }
-
-        // Thêm vào database
-        const newHabit = {
-          title,
-          description: apiHabit.description || null,
-          active: apiHabit.active !== undefined ? apiHabit.active : 1,
-          done_today: 0,
-          created_at: Date.now(),
-        };
-
-        await createHabit(db, newHabit);
-        importedCount++;
-
-        // Thêm vào existingTitles để check các habits tiếp theo
-        existingTitles.push(title.toLowerCase());
-      }
-
-      // Refresh danh sách
-      await loadHabits();
-
-      // Thông báo kết quả
-      if (importedCount > 0) {
-        Alert.alert(
-          'Import thành công!',
-          `Đã thêm ${importedCount} thói quen mới${skippedCount > 0 ? `\nBỏ qua ${skippedCount} thói quen trùng lặp` : ''}`
-        );
-      } else {
-        Alert.alert('Thông báo', 'Tất cả thói quen đã tồn tại, không có thói quen mới nào được thêm');
-      }
-    } catch (error) {
-      console.error('Error importing habits:', error);
       Alert.alert(
-        'Lỗi khi import',
-        'Không thể lấy dữ liệu từ API. Vui lòng kiểm tra kết nối mạng và thử lại!'
+        'Xác nhận xóa',
+        `Bạn có chắc chắn muốn xóa thói quen "${habit.title}" không?`,
+        [
+          {
+            text: 'Hủy',
+            style: 'cancel',
+          },
+          {
+            text: 'Xóa',
+            style: 'destructive',
+            onPress: () => removeHabit(habit.id!),
+          },
+        ],
+        { cancelable: true }
       );
-    } finally {
-      setIsImporting(false);
-    }
-  };
+    },
+    [removeHabit]
+  );
 
-  // Render item trong FlatList
-  const renderHabitItem = ({ item }: { item: Habit }) => {
-    const isDone = item.done_today === 1;
+  // Render item trong FlatList - wrapped với useCallback để tối ưu
+  const renderHabitItem = useCallback(
+    ({ item }: { item: Habit }) => {
+      const isDone = item.done_today === 1;
     
-  return (
-      <TouchableOpacity
-        onPress={() => handleToggleDone(item)}
-        activeOpacity={0.7}
-        className={`p-4 mb-3 rounded-lg shadow-sm border-2 ${
-          isDone
-            ? 'bg-green-50 border-green-300'
-            : 'bg-white border-gray-200'
-        }`}
-      >
+      return (
+        <TouchableOpacity
+          onPress={() => toggleHabitDone(item)}
+          disabled={isLoading || isImporting}
+          activeOpacity={0.7}
+          className={`p-4 mb-3 rounded-lg shadow-sm border-2 ${
+            isDone
+              ? 'bg-green-50 border-green-300'
+              : 'bg-white border-gray-200'
+          } ${isLoading || isImporting ? 'opacity-50' : ''}`}
+        >
         <View className="flex-row justify-between items-start mb-2">
           {/* Icon check circle lớn */}
           <View className="mr-3 mt-1">
@@ -323,7 +161,10 @@ export default function HabitListScreen() {
                 e.stopPropagation();
                 handleOpenEditModal(item);
               }}
-              className="bg-orange-500 px-3 py-2 rounded-md"
+              disabled={isLoading || isImporting}
+              className={`px-3 py-2 rounded-md ${
+                isLoading || isImporting ? 'bg-orange-300' : 'bg-orange-500'
+              }`}
             >
               <Text className="text-white text-xs font-semibold">✏️ Sửa</Text>
             </TouchableOpacity>
@@ -333,18 +174,23 @@ export default function HabitListScreen() {
                 e.stopPropagation();
                 handleDeleteHabit(item);
               }}
-              className="bg-red-500 px-3 py-2 rounded-md"
+              disabled={isLoading || isImporting}
+              className={`px-3 py-2 rounded-md ${
+                isLoading || isImporting ? 'bg-red-300' : 'bg-red-500'
+              }`}
             >
               <Text className="text-white text-xs font-semibold">🗑️ Xóa</Text>
             </TouchableOpacity>
           </View>
         </View>
-      </TouchableOpacity>
-    );
-  };
+        </TouchableOpacity>
+      );
+    },
+    [toggleHabitDone, handleOpenEditModal, handleDeleteHabit, isLoading, isImporting]
+  );
 
-  // Empty state
-  const renderEmptyState = () => {
+  // Empty state - wrapped với useCallback để tối ưu
+  const renderEmptyState = useCallback(() => {
     // Nếu đang search hoặc filter
     if (searchQuery.trim() || showActiveOnly) {
       return (
@@ -360,18 +206,19 @@ export default function HabitListScreen() {
           </Text>
           {searchQuery.trim() && (
             <TouchableOpacity 
-              onPress={handleClearSearch}
+              onPress={clearSearch}
               className="mt-4 bg-blue-500 px-6 py-2 rounded-lg"
+              disabled={isLoading}
             >
               <Text className="text-white font-medium">Xóa tìm kiếm</Text>
             </TouchableOpacity>
           )}
-    </View>
-  );
-}
+        </View>
+      );
+    }
 
     // Empty state mặc định
-  return (
+    return (
       <View className="flex-1 justify-center items-center px-6 py-20">
         <Text className="text-6xl mb-4">📝</Text>
         <Text className="text-xl font-semibold text-gray-900 mb-2 text-center">
@@ -382,7 +229,7 @@ export default function HabitListScreen() {
         </Text>
       </View>
     );
-  };
+  }, [searchQuery, showActiveOnly, clearSearch, isLoading]);
 
   if (dbLoading || isLoading) {
     return (
@@ -416,7 +263,7 @@ export default function HabitListScreen() {
             className="flex-1 text-base text-gray-900"
           />
           {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={handleClearSearch} className="ml-2">
+            <TouchableOpacity onPress={clearSearch} className="ml-2">
               <Text className="text-gray-500 text-lg">✕</Text>
             </TouchableOpacity>
           )}
@@ -432,9 +279,10 @@ export default function HabitListScreen() {
           
           <TouchableOpacity
             onPress={() => setShowActiveOnly(!showActiveOnly)}
+            disabled={isLoading}
             className={`flex-row items-center px-3 py-1.5 rounded-full ${
               showActiveOnly ? 'bg-blue-100' : 'bg-gray-100'
-            }`}
+            } ${isLoading ? 'opacity-50' : ''}`}
           >
             <Text className={`text-xs font-medium ${
               showActiveOnly ? 'text-blue-700' : 'text-gray-600'
@@ -446,10 +294,10 @@ export default function HabitListScreen() {
 
         {/* Import Button */}
         <TouchableOpacity
-          onPress={handleImportFromAPI}
-          disabled={isImporting}
+          onPress={importFromAPI}
+          disabled={isImporting || isLoading}
           className={`flex-row items-center justify-center py-2.5 rounded-lg border-2 ${
-            isImporting ? 'bg-gray-100 border-gray-300' : 'bg-purple-50 border-purple-300'
+            isImporting || isLoading ? 'bg-gray-100 border-gray-300' : 'bg-purple-50 border-purple-300'
           }`}
         >
           {isImporting ? (
@@ -466,7 +314,7 @@ export default function HabitListScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Danh sách thói quen */}
+      {/* Danh sách thói quen với Pull to Refresh */}
       <FlatList
         data={filteredHabits}
         renderItem={renderHabitItem}
@@ -474,13 +322,26 @@ export default function HabitListScreen() {
         contentContainerStyle={{ padding: 16, flexGrow: 1 }}
         ListEmptyComponent={renderEmptyState}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={refreshHabits}
+            colors={['#3B82F6']}
+            tintColor="#3B82F6"
+            title="Đang tải..."
+            titleColor="#6B7280"
+          />
+        }
       />
 
       {/* Nút thêm thói quen */}
       <View className="px-6 py-4 bg-white border-t border-gray-200">
         <TouchableOpacity 
-          className="bg-blue-500 py-4 rounded-lg items-center shadow-md"
+          className={`py-4 rounded-lg items-center shadow-md ${
+            isLoading || isImporting ? 'bg-blue-300' : 'bg-blue-500'
+          }`}
           onPress={handleOpenAddModal}
+          disabled={isLoading || isImporting}
         >
           <Text className="text-white font-semibold text-base">+ Thêm thói quen mới</Text>
         </TouchableOpacity>
