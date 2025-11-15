@@ -1,14 +1,16 @@
 import React, { useEffect, useState } from "react";
-import { Text, View, FlatList, ActivityIndicator, TouchableOpacity } from "react-native";
+import { Text, View, FlatList, ActivityIndicator, TouchableOpacity, Alert } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useDatabase } from "../contexts/DatabaseContext";
-import { getAllHabits } from "../db";
+import { getAllHabits, createHabit } from "../db";
 import { Habit } from "../types/habit";
+import AddHabitModal from "../components/AddHabitModal";
 
 export default function HabitListScreen() {
   const { db, isLoading: dbLoading } = useDatabase();
   const [habits, setHabits] = useState<Habit[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [modalVisible, setModalVisible] = useState(false);
   const { top } = useSafeAreaInsets();
 
   // Lấy dữ liệu từ database
@@ -31,6 +33,32 @@ export default function HabitListScreen() {
       loadHabits();
     }
   }, [db]);
+
+  // Xử lý thêm thói quen mới
+  const handleAddHabit = async (title: string, description: string) => {
+    if (!db) return;
+
+    try {
+      const newHabit = {
+        title,
+        description: description || null,
+        active: 1,
+        done_today: 0,
+        created_at: Date.now(),
+      };
+
+      await createHabit(db, newHabit);
+      
+      // Refresh danh sách ngay lập tức
+      await loadHabits();
+      
+      // Hiển thị thông báo thành công
+      Alert.alert('Thành công', 'Đã thêm thói quen mới!');
+    } catch (error) {
+      console.error('Error adding habit:', error);
+      Alert.alert('Lỗi', 'Không thể thêm thói quen. Vui lòng thử lại!');
+    }
+  };
 
   // Render item trong FlatList
   const renderHabitItem = ({ item }: { item: Habit }) => (
@@ -108,10 +136,20 @@ export default function HabitListScreen() {
 
       {/* Nút thêm thói quen */}
       <View className="px-6 py-4 bg-white border-t border-gray-200">
-        <TouchableOpacity className="bg-blue-500 py-4 rounded-lg items-center shadow-md">
+        <TouchableOpacity 
+          className="bg-blue-500 py-4 rounded-lg items-center shadow-md"
+          onPress={() => setModalVisible(true)}
+        >
           <Text className="text-white font-semibold text-base">+ Thêm thói quen mới</Text>
         </TouchableOpacity>
       </View>
+
+      {/* Modal thêm thói quen */}
+      <AddHabitModal
+        visible={modalVisible}
+        onClose={() => setModalVisible(false)}
+        onSave={handleAddHabit}
+      />
     </View>
   );
 }
