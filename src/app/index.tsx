@@ -1,94 +1,116 @@
-import { Link } from "expo-router";
-import React from "react";
-import { Text, View } from "react-native";
+import React, { useEffect, useState } from "react";
+import { Text, View, FlatList, ActivityIndicator, TouchableOpacity } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useDatabase } from "../contexts/DatabaseContext";
+import { getAllHabits } from "../db";
+import { Habit } from "../types/habit";
 
-export default function Page() {
-  return (
-    <View className="flex flex-1">
-      <Header />
-      <Content />
-      <Footer />
-    </View>
-  );
-}
-
-function Content() {
-  return (
-    <View className="flex-1">
-      <View className="py-12 md:py-24 lg:py-32 xl:py-48">
-        <View className="px-4 md:px-6">
-          <View className="flex flex-col items-center gap-4 text-center">
-            <Text
-              role="heading"
-              className="text-3xl text-center native:text-5xl font-bold tracking-tighter sm:text-4xl md:text-5xl lg:text-6xl"
-            >
-              Welcome to Project ACME
-            </Text>
-            <Text className="mx-auto max-w-[700px] text-lg text-center text-gray-500 md:text-xl dark:text-gray-400">
-              Discover and collaborate on acme. Explore our services now.
-            </Text>
-
-            <View className="gap-4">
-              <Link
-                suppressHighlighting
-                className="flex h-9 items-center justify-center overflow-hidden rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-gray-50 web:shadow ios:shadow transition-colors hover:bg-gray-900/90 active:bg-gray-400/90 web:focus-visible:outline-none web:focus-visible:ring-1 focus-visible:ring-gray-950 disabled:pointer-events-none disabled:opacity-50 dark:bg-gray-50 dark:text-gray-900 dark:hover:bg-gray-50/90 dark:focus-visible:ring-gray-300"
-                href="/"
-              >
-                Explore
-              </Link>
-            </View>
-          </View>
-        </View>
-      </View>
-    </View>
-  );
-}
-
-function Header() {
+export default function HabitListScreen() {
+  const { db, isLoading: dbLoading } = useDatabase();
+  const [habits, setHabits] = useState<Habit[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const { top } = useSafeAreaInsets();
-  return (
-    <View style={{ paddingTop: top }}>
-      <View className="px-4 lg:px-6 h-14 flex items-center flex-row justify-between ">
-        <Link className="font-bold flex-1 items-center justify-center" href="/">
-          ACME
-        </Link>
-        <View className="flex flex-row gap-4 sm:gap-6">
-          <Link
-            className="text-md font-medium hover:underline web:underline-offset-4"
-            href="/"
-          >
-            About
-          </Link>
-          <Link
-            className="text-md font-medium hover:underline web:underline-offset-4"
-            href="/"
-          >
-            Product
-          </Link>
-          <Link
-            className="text-md font-medium hover:underline web:underline-offset-4"
-            href="/"
-          >
-            Pricing
-          </Link>
-        </View>
+
+  // Lấy dữ liệu từ database
+  const loadHabits = async () => {
+    if (!db) return;
+    
+    try {
+      setIsLoading(true);
+      const data = await getAllHabits(db);
+      setHabits(data);
+    } catch (error) {
+      console.error('Error loading habits:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (db) {
+      loadHabits();
+    }
+  }, [db]);
+
+  // Render item trong FlatList
+  const renderHabitItem = ({ item }: { item: Habit }) => (
+    <View className="bg-white p-4 mb-3 rounded-lg shadow-sm border border-gray-200">
+      <View className="flex-row justify-between items-start mb-2">
+        <Text className="text-lg font-semibold text-gray-900 flex-1">{item.title}</Text>
+        {item.done_today === 1 && (
+          <View className="bg-green-100 px-3 py-1 rounded-full">
+            <Text className="text-green-700 text-xs font-medium">✓ Hoàn thành</Text>
+          </View>
+        )}
+        {item.done_today === 0 && (
+          <View className="bg-gray-100 px-3 py-1 rounded-full">
+            <Text className="text-gray-600 text-xs font-medium">Chưa làm</Text>
+          </View>
+        )}
+      </View>
+      
+      {item.description && (
+        <Text className="text-gray-600 text-sm leading-5">{item.description}</Text>
+      )}
+      
+      <View className="flex-row justify-between items-center mt-3 pt-3 border-t border-gray-100">
+        <Text className="text-xs text-gray-400">
+          {new Date(item.created_at).toLocaleDateString('vi-VN')}
+        </Text>
+        <TouchableOpacity className="bg-blue-500 px-4 py-2 rounded-md">
+          <Text className="text-white text-sm font-medium">Đánh dấu</Text>
+        </TouchableOpacity>
       </View>
     </View>
   );
-}
 
-function Footer() {
-  const { bottom } = useSafeAreaInsets();
+  // Empty state
+  const renderEmptyState = () => (
+    <View className="flex-1 justify-center items-center px-6 py-20">
+      <Text className="text-6xl mb-4">📝</Text>
+      <Text className="text-xl font-semibold text-gray-900 mb-2 text-center">
+        Chưa có thói quen nào
+      </Text>
+      <Text className="text-gray-500 text-center text-base">
+        Hãy thêm một thói quen mới để bắt đầu!
+      </Text>
+    </View>
+  );
+
+  if (dbLoading || isLoading) {
+    return (
+      <View className="flex-1 justify-center items-center bg-gray-50">
+        <ActivityIndicator size="large" color="#3B82F6" />
+        <Text className="mt-4 text-gray-600">Đang tải...</Text>
+      </View>
+    );
+  }
+
   return (
-    <View
-      className="flex shrink-0 bg-gray-100 native:hidden"
-      style={{ paddingBottom: bottom }}
-    >
-      <View className="py-6 flex-1 items-start px-4 md:px-6 ">
-        <Text className={"text-center text-gray-700"}>
-          © {new Date().getFullYear()} Me
+    <View className="flex-1 bg-gray-50" style={{ paddingTop: top }}>
+      {/* Header */}
+      <View className="bg-white px-6 py-4 border-b border-gray-200">
+        <Text className="text-2xl font-bold text-gray-900">Thói Quen Của Tôi</Text>
+        <Text className="text-sm text-gray-600 mt-1">
+          Theo dõi và phát triển thói quen tốt mỗi ngày
         </Text>
+      </View>
+
+      {/* Danh sách thói quen */}
+      <FlatList
+        data={habits}
+        renderItem={renderHabitItem}
+        keyExtractor={(item) => item.id?.toString() || ''}
+        contentContainerStyle={{ padding: 16, flexGrow: 1 }}
+        ListEmptyComponent={renderEmptyState}
+        showsVerticalScrollIndicator={false}
+      />
+
+      {/* Nút thêm thói quen */}
+      <View className="px-6 py-4 bg-white border-t border-gray-200">
+        <TouchableOpacity className="bg-blue-500 py-4 rounded-lg items-center shadow-md">
+          <Text className="text-white font-semibold text-base">+ Thêm thói quen mới</Text>
+        </TouchableOpacity>
       </View>
     </View>
   );
