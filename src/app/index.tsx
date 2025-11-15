@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Text, View, FlatList, ActivityIndicator, TouchableOpacity, Alert } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useDatabase } from "../contexts/DatabaseContext";
-import { getAllHabits, createHabit, toggleDoneToday } from "../db";
+import { getAllHabits, createHabit, toggleDoneToday, updateHabit } from "../db";
 import { Habit } from "../types/habit";
 import AddHabitModal from "../components/AddHabitModal";
 
@@ -11,6 +11,7 @@ export default function HabitListScreen() {
   const [habits, setHabits] = useState<Habit[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [modalVisible, setModalVisible] = useState(false);
+  const [editingHabit, setEditingHabit] = useState<Habit | null>(null);
   const { top } = useSafeAreaInsets();
 
   // Lấy dữ liệu từ database
@@ -34,30 +35,62 @@ export default function HabitListScreen() {
     }
   }, [db]);
 
-  // Xử lý thêm thói quen mới
-  const handleAddHabit = async (title: string, description: string) => {
+  // Xử lý thêm/sửa thói quen
+  const handleSaveHabit = async (title: string, description: string) => {
     if (!db) return;
 
     try {
-      const newHabit = {
-        title,
-        description: description || null,
-        active: 1,
-        done_today: 0,
-        created_at: Date.now(),
-      };
+      if (editingHabit) {
+        // Chế độ sửa
+        const updatedHabit: Habit = {
+          ...editingHabit,
+          title,
+          description: description || null,
+        };
 
-      await createHabit(db, newHabit);
+        await updateHabit(db, updatedHabit);
+        Alert.alert('Thành công', 'Đã cập nhật thói quen!');
+      } else {
+        // Chế độ thêm mới
+        const newHabit = {
+          title,
+          description: description || null,
+          active: 1,
+          done_today: 0,
+          created_at: Date.now(),
+        };
+
+        await createHabit(db, newHabit);
+        Alert.alert('Thành công', 'Đã thêm thói quen mới!');
+      }
       
       // Refresh danh sách ngay lập tức
       await loadHabits();
       
-      // Hiển thị thông báo thành công
-      Alert.alert('Thành công', 'Đã thêm thói quen mới!');
+      // Reset editing state
+      setEditingHabit(null);
     } catch (error) {
-      console.error('Error adding habit:', error);
-      Alert.alert('Lỗi', 'Không thể thêm thói quen. Vui lòng thử lại!');
+      console.error('Error saving habit:', error);
+      Alert.alert('Lỗi', 'Không thể lưu thói quen. Vui lòng thử lại!');
     }
+  };
+
+  // Mở modal thêm mới
+  const handleOpenAddModal = () => {
+    setEditingHabit(null);
+    setModalVisible(true);
+  };
+
+  // Mở modal sửa
+  const handleOpenEditModal = (habit: Habit) => {
+    setEditingHabit(habit);
+    setModalVisible(true);
+  };
+
+  // Đóng modal
+  const handleCloseModal = () => {
+    setModalVisible(false);
+    setEditingHabit(null);
   };
 
   // Xử lý toggle trạng thái done_today
@@ -143,9 +176,15 @@ export default function HabitListScreen() {
             📅 {new Date(item.created_at).toLocaleDateString('vi-VN')}
           </Text>
           
-          <Text className={`text-sm font-medium ${isDone ? 'text-green-600' : 'text-blue-500'}`}>
-            {isDone ? '🎉 Đã hoàn thành hôm nay' : '👉 Chạm để đánh dấu'}
-          </Text>
+          <TouchableOpacity
+            onPress={(e) => {
+              e.stopPropagation();
+              handleOpenEditModal(item);
+            }}
+            className="bg-orange-500 px-3 py-2 rounded-md"
+          >
+            <Text className="text-white text-xs font-semibold">✏️ Sửa</Text>
+          </TouchableOpacity>
         </View>
       </TouchableOpacity>
     );
@@ -197,17 +236,18 @@ export default function HabitListScreen() {
       <View className="px-6 py-4 bg-white border-t border-gray-200">
         <TouchableOpacity 
           className="bg-blue-500 py-4 rounded-lg items-center shadow-md"
-          onPress={() => setModalVisible(true)}
+          onPress={handleOpenAddModal}
         >
           <Text className="text-white font-semibold text-base">+ Thêm thói quen mới</Text>
         </TouchableOpacity>
       </View>
 
-      {/* Modal thêm thói quen */}
+      {/* Modal thêm/sửa thói quen */}
       <AddHabitModal
         visible={modalVisible}
-        onClose={() => setModalVisible(false)}
-        onSave={handleAddHabit}
+        onClose={handleCloseModal}
+        onSave={handleSaveHabit}
+        editingHabit={editingHabit}
       />
     </View>
   );

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Modal,
   View,
@@ -10,17 +10,30 @@ import {
   ScrollView,
   Alert,
 } from 'react-native';
+import { Habit } from '../types/habit';
 
 interface AddHabitModalProps {
   visible: boolean;
   onClose: () => void;
   onSave: (title: string, description: string) => void;
+  editingHabit?: Habit | null;
 }
 
-export default function AddHabitModal({ visible, onClose, onSave }: AddHabitModalProps) {
+export default function AddHabitModal({ visible, onClose, onSave, editingHabit }: AddHabitModalProps) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [titleError, setTitleError] = useState('');
+
+  // Load dữ liệu khi edit
+  useEffect(() => {
+    if (editingHabit) {
+      setTitle(editingHabit.title);
+      setDescription(editingHabit.description || '');
+    } else {
+      setTitle('');
+      setDescription('');
+    }
+  }, [editingHabit, visible]);
 
   const handleSave = () => {
     // Validate: title không được rỗng
@@ -60,7 +73,9 @@ export default function AddHabitModal({ visible, onClose, onSave }: AddHabitModa
             {/* Header */}
             <View className="px-6 py-4 border-b border-gray-200">
               <View className="flex-row justify-between items-center">
-                <Text className="text-2xl font-bold text-gray-900">Thêm Thói Quen</Text>
+                <Text className="text-2xl font-bold text-gray-900">
+                  {editingHabit ? 'Sửa Thói Quen' : 'Thêm Thói Quen'}
+                </Text>
                 <TouchableOpacity onPress={handleClose} className="p-2">
                   <Text className="text-2xl text-gray-500">×</Text>
                 </TouchableOpacity>
